@@ -4,8 +4,6 @@ const cors = require('cors');
 require('dotenv').config();
 const winston = require('winston');
 const expressWinston = require('express-winston');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 
 // Routes
 const userRoutes = require('./routes/userRoutes');
@@ -18,14 +16,31 @@ const { swaggerSpec, swaggerUi } = require('./swagger');
 
 const app = express();
 
-// Security Middleware - Must be first
-app.use(helmet());
-app.use(rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+// Enhanced CORS configuration
+const allowedOrigins = [
+  'http://localhost:3000', // Your local frontend
+  'http://127.0.0.1:3000', // Alternative local address
+ 'https://e-commerce-final-backend-project.vercel.app'
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    const msg = `CORS error: ${origin} not allowed`;
+    console.error(msg);
+    return callback(new Error(msg), false);
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Configure logger
+// Logger configuration (using your existing winston setup)
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -38,33 +53,10 @@ const logger = winston.createLogger({
   ]
 });
 
-// Enhanced CORS Configuration
-const allowedOrigins = [
-  'http://localhost:3000', // Local development
-  'https://e-commerce-final-backend-project.vercel.app/' 
-];
-
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      logger.error(msg, { origin });
-      return callback(new Error(msg), false);
-    }
-    return callback(null, true);
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
 // Middleware
-app.use(express.json({ limit: '10kb' })); // Limit body size
+app.use(express.json());
 
-// Request logging middleware
+// Request logging middleware (existing)
 app.use(expressWinston.logger({
   winstonInstance: logger,
   meta: true,
@@ -73,14 +65,10 @@ app.use(expressWinston.logger({
   colorize: false,
 }));
 
-// Enhanced MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI, {
+// Database connection (improved with your existing mongoose)
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ecommerce', {
   useNewUrlParser: true,
-  useUnifiedTopology: true,
-  useCreateIndex: true,
-  useFindAndModify: false,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000
+  useUnifiedTopology: true
 })
 .then(() => logger.info('Connected to MongoDB'))
 .catch(err => {
@@ -88,50 +76,37 @@ mongoose.connect(process.env.MONGODB_URI, {
   process.exit(1); // Exit if DB connection fails
 });
 
-// Routes
+// Routes (keep your existing routes)
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/categories', categoryRoutes);
 
-// Swagger Docs
+// Swagger Docs (existing)
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Health Check Endpoint
-app.get('/health', (req, res) => {
+// Health check endpoint (recommended addition)
+app.get('/api/health', (req, res) => {
   res.status(200).json({
-    status: 'healthy',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    timestamp: new Date()
+    status: 'ok',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   });
 });
 
-// Basic route
+// Basic route (existing)
 app.get('/', (req, res) => {
   res.send('E-Commerce Weather API');
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal Server Error' });
-});
-
-// Error logging middleware
+// Error handling (existing)
 app.use(expressWinston.errorLogger({
   winstonInstance: logger
 }));
 
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   logger.info(`Allowed CORS origins: ${allowedOrigins.join(', ')}`);
 });
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  logger.error('Unhandled Rejection:', err);
-  server.close(() => process.exit(1));
-});
-
-module.exports = app; // Export for testing
+module.exports = app;

@@ -16,11 +16,11 @@ const { swaggerSpec, swaggerUi } = require('./swagger');
 
 const app = express();
 
-// Enhanced CORS configuration
+// Enhanced CORS configuration with your exact frontend URL
 const allowedOrigins = [
-  'http://localhost:3000', // Your local frontend
-  'http://127.0.0.1:3000', // Alternative local address
- 'https://e-commerce-final-backend-project.vercel.app'
+  'http://localhost:3000', // Local development
+  'http://127.0.0.1:3000', // Alternative local
+  'https://e-commerce-final-backend-project.vercel.app' // Your production frontend
 ];
 
 app.use(cors({
@@ -36,11 +36,15 @@ app.use(cors({
     console.error(msg);
     return callback(new Error(msg), false);
   },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token']
 }));
 
-// Logger configuration (using your existing winston setup)
+// Handle preflight requests
+app.options('*', cors());
+
+// Logger configuration
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -56,7 +60,7 @@ const logger = winston.createLogger({
 // Middleware
 app.use(express.json());
 
-// Request logging middleware (existing)
+// Request logging
 app.use(expressWinston.logger({
   winstonInstance: logger,
   meta: true,
@@ -65,40 +69,42 @@ app.use(expressWinston.logger({
   colorize: false,
 }));
 
-// Database connection (improved with your existing mongoose)
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ecommerce', {
+// Database connection
+mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000
 })
 .then(() => logger.info('Connected to MongoDB'))
 .catch(err => {
   logger.error('MongoDB connection error:', err);
-  process.exit(1); // Exit if DB connection fails
+  process.exit(1);
 });
 
-// Routes (keep your existing routes)
+// API routes
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/categories', categoryRoutes);
 
-// Swagger Docs (existing)
+// Swagger Docs
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Health check endpoint (recommended addition)
+// Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({
-    status: 'ok',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    status: 'healthy',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    timestamp: new Date()
   });
 });
 
-// Basic route (existing)
+// Basic route
 app.get('/', (req, res) => {
   res.send('E-Commerce Weather API');
 });
 
-// Error handling (existing)
+// Error handling
 app.use(expressWinston.errorLogger({
   winstonInstance: logger
 }));
